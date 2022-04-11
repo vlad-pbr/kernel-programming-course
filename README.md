@@ -4,4 +4,4 @@ Kernel programming course assignment, College of Management Academic Studies, 3r
 
 ## Overview
 
-Each branch in this repository represents an assignment. 
+Each directory in this repository represents an assignment. Each directory has its own README.md which explains the assignment.
