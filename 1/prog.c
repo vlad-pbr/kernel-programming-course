@@ -136,7 +136,8 @@ void main(int argc, char *argv[]) {
     long msgtype;
     struct msgbuf msg;
     struct msqid_ds ds;
-    struct result* r;
+    struct result* results;
+    float average;
 
     // set the same message type for all messages
     msgtype = 1;
@@ -181,6 +182,10 @@ void main(int argc, char *argv[]) {
     // stat queue check amount of messages
     msgctl(qId, IPC_STAT, &ds);
 
+    // prepare variables
+    average = 0;
+    results = malloc( sizeof(struct result) * ds.msg_qnum );
+
     // iterate messages in queue
     for (int i = 0; i < ds.msg_qnum; i++) {
 
@@ -188,11 +193,21 @@ void main(int argc, char *argv[]) {
         msgrcv(qId, &msg, sizeof(msg.mText), msgtype, 0);
 
         // cast message to result
-        r = (struct result *)msg.mText;
+        results[i] = *(struct result *)msg.mText;
 
-        printf("name: %s, words: %d\n", r->name, r->words);
+        // add to average
+        average += results[i].words;
+
+        printf("name: %s, words: %d\n", results[i].name, results[i].words);
     }
 
-    // TODO close queue
+    // calculate average
+    average /= ds.msg_qnum;
 
+    printf("avg: %f\n", average);
+
+    // close queue
+    msgctl(qId, IPC_RMID, &ds);
+
+    free(results);
 }
