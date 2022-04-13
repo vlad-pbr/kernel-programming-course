@@ -9,14 +9,21 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
+#include <sys/msg.h>
 
 #define BUFFER_SIZE 256
 
-// void handleFile(char* path) {
-//     execlp("wc", "wc", "-w", (char *)NULL );
-// }
+struct result {
+    char name[BUFFER_SIZE];
+    int words;
+};
 
-void handleDirectory(char* path) {
+struct msgbuf {
+   long mType;
+   char mText[sizeof(struct result)];
+};
+
+void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
 
     // define vars
     DIR* dir;
@@ -28,15 +35,13 @@ void handleDirectory(char* path) {
     int pipe_out_fds[2];
     char buffer[BUFFER_SIZE];
     ssize_t read_amt;
-    int word_count;
     pid_t pid;
     int rc;
+    struct result r;
 
     // iterate files in directory
     dir = opendir(path);
     for (entry = readdir(dir); entry != NULL; entry = readdir(dir)) {
-
-        // sleep(1);
 
         // ignore current and previous directories
         if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
@@ -52,15 +57,23 @@ void handleDirectory(char* path) {
             if (S_ISDIR(entry_stat.st_mode) == 1) {
 
                 if ((pid = fork()) == 0) {
-                    handleDirectory(entry_path);
+
+                    // close reading end of pipe
+                    close(pipe_parent_dir_fds[0]);
+
+                    // handle subdirectory
+                    handleDirectory(entry_path, pipe_parent_dir_fds);
+
+                    // close writing end of pipe
+                    close(pipe_parent_dir_fds[1]);
+
+                    exit(0);
                 }
 
                 // wait for child to exit
                 waitpid(pid, &rc, 0);
 
             } else {
-
-                printf("name: %s, file\n", entry_path);
 
                 // set-up pipes
                 pipe(pipe_in_fds);
@@ -80,6 +93,8 @@ void handleDirectory(char* path) {
                     close(pipe_in_fds[1]);
                     close(pipe_out_fds[0]);
                     close(pipe_out_fds[1]);
+                    close(pipe_parent_dir_fds[0]);
+                    close(pipe_parent_dir_fds[1]);
 
                     // run wc
                     execlp("wc", "wc", "-w", (char *)NULL );
@@ -92,14 +107,19 @@ void handleDirectory(char* path) {
 
                 // read from pipe
                 read_amt = read(pipe_out_fds[0], buffer, BUFFER_SIZE);
+                close(pipe_out_fds[0]);
                 buffer[read_amt] = '\0';
 
-                // parse amount of words to integer
-                word_count = atoi(buffer);
-                printf("%d\n", word_count);
+                // fill result struct
+                strcpy(r.name, entry_path);
+                r.words = atoi(buffer);
+
+                // write result to parent pipe
+                write(pipe_parent_dir_fds[1], &r, sizeof(struct result));
 
             }
 
+            free(entry_path);
         }
 
     }
@@ -111,12 +131,68 @@ void main(int argc, char *argv[]) {
     // define vars
     pid_t pid;
     int rc;
+    key_t qKey;
+    int qId;
+    long msgtype;
+    struct msgbuf msg;
+    struct msqid_ds ds;
+    struct result* r;
+
+    // set the same message type for all messages
+    msgtype = 1;
+
+    // generate systemv ipc queue
+    qKey = ftok("/tmp", 'z' );
+    qId = msgget(qKey, IPC_CREAT | 0666 );
 
     // handle given directory
     if ((pid = fork()) == 0) {
-        handleDirectory(argv[1]);
+
+        // define vars
+        int pipe_dir_fds[2];
+
+        // make pipe and pass to recursive function
+        pipe(pipe_dir_fds);
+
+        // handle provided dir
+        handleDirectory(argv[1], pipe_dir_fds);
+
+        // close writing end of pipe
+        close(pipe_dir_fds[1]);
+
+        // set type for each following message to be the same
+        msg.mType = msgtype;
+
+        // read each result and send to message queue
+        while ( read(pipe_dir_fds[0], msg.mText, sizeof(msg.mText)) ) {
+            msg.mType = 1;
+            msgsnd(qId, &msg, sizeof(msg.mText), 0);
+        }
+
+        // close reading end of pipe
+        close(pipe_dir_fds[0]);
+
+        exit(0);
     }
 
+    // wait on child to finish
     waitpid(pid, &rc, 0);
+
+    // stat queue check amount of messages
+    msgctl(qId, IPC_STAT, &ds);
+
+    // iterate messages in queue
+    for (int i = 0; i < ds.msg_qnum; i++) {
+
+        // read message from queue
+        msgrcv(qId, &msg, sizeof(msg.mText), msgtype, 0);
+
+        // cast message to result
+        r = (struct result *)msg.mText;
+
+        printf("name: %s, words: %d\n", r->name, r->words);
+    }
+
+    // TODO close queue
 
 }
