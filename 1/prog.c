@@ -135,9 +135,13 @@ void main(int argc, char *argv[]) {
     int qId;
     long msgtype;
     struct msgbuf msg;
-    struct msqid_ds ds;
     struct result* results;
+    int resultsAmt;
     float average;
+    float variance;
+
+    // initial results memory allocation
+    results = malloc(0);
 
     // set the same message type for all messages
     msgtype = 1;
@@ -173,41 +177,43 @@ void main(int argc, char *argv[]) {
         // close reading end of pipe
         close(pipe_dir_fds[0]);
 
+        // close queue
+        msgctl(qId, IPC_RMID, NULL);
+
         exit(0);
     }
 
-    // wait on child to finish
-    waitpid(pid, &rc, 0);
-
-    // stat queue check amount of messages
-    msgctl(qId, IPC_STAT, &ds);
-
     // prepare variables
     average = 0;
-    results = malloc( sizeof(struct result) * ds.msg_qnum );
+    variance = 0;
+    resultsAmt = 0;
 
-    // iterate messages in queue
-    for (int i = 0; i < ds.msg_qnum; i++) {
+    // read until end of queue
+    while(msgrcv(qId, &msg, sizeof(msg.mText), msgtype, 0) != -1) {
 
-        // read message from queue
-        msgrcv(qId, &msg, sizeof(msg.mText), msgtype, 0);
+        results = realloc(results, sizeof(struct result) * (resultsAmt + 1) );
 
         // cast message to result
-        results[i] = *(struct result *)msg.mText;
+        results[resultsAmt] = *(struct result *)msg.mText;
 
         // add to average
-        average += results[i].words;
-
-        printf("name: %s, words: %d\n", results[i].name, results[i].words);
+        average += results[resultsAmt++].words; 
     }
 
     // calculate average
-    average /= ds.msg_qnum;
+    average /= resultsAmt;
 
-    printf("avg: %f\n", average);
+    // calculate variance
+    for (int i = 0; i < resultsAmt; i++) {
+        variance += (results[i].words - average) * (results[i].words - average);
+    }
+    variance /= resultsAmt;
 
-    // close queue
-    msgctl(qId, IPC_RMID, &ds);
+    // results
+    for (int i = 0; i < resultsAmt; i++) {
+        printf("name: %s, words: %d, diff from average: %f\n", results[i].name, results[i].words, results[i].words - average);
+    }
+    printf("\naverage: %f\nvariance: %f\n", average, variance);
 
     free(results);
 }
