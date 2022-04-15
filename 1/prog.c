@@ -12,6 +12,7 @@
 #include <sys/msg.h>
 
 #define BUFFER_SIZE 256 + 10 + 1 + 1 // 256 (max file path length) + 10 (int max size as string) + 1 (space) + 1 (null terminator)
+#define MSGTYPE 1
 
 struct result {
     char name[BUFFER_SIZE];
@@ -23,7 +24,7 @@ struct msgbuf {
    char mText[sizeof(struct result)];
 };
 
-void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
+void handleDirectory(char* path, int qId) {
 
     // define vars
     DIR* dir;
@@ -36,6 +37,11 @@ void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
     pid_t pid;
     int rc;
     struct result r;
+    struct msgbuf msg;
+    struct msqid_ds ds;
+
+    // set same message type for all messages
+    msg.mType = MSGTYPE;
 
     // iterate files in directory
     dir = opendir(path);
@@ -56,14 +62,8 @@ void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
 
                 if ((pid = fork()) == 0) {
 
-                    // close reading end of pipe
-                    close(pipe_parent_dir_fds[0]);
-
                     // handle subdirectory
-                    handleDirectory(entry_path, pipe_parent_dir_fds);
-
-                    // close writing end of pipe
-                    close(pipe_parent_dir_fds[1]);
+                    handleDirectory(entry_path, qId);
 
                     exit(0);
                 }
@@ -82,8 +82,6 @@ void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
                     dup2(pipe_out_fds[1], 1);
                     close(pipe_out_fds[0]);
                     close(pipe_out_fds[1]);
-                    close(pipe_parent_dir_fds[0]);
-                    close(pipe_parent_dir_fds[1]);
 
                     // run wc
                     execlp("wc", "wc", "-w", entry_path, (char *)NULL );
@@ -105,8 +103,14 @@ void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
                 strcpy(r.name, entry_path);
                 r.words = atoi(buffer);
 
-                // write result to parent pipe
-                write(pipe_parent_dir_fds[1], &r, sizeof(struct result));
+                // send result to queue
+                strcpy(msg.mText, (char *)&r);
+                msgsnd(qId, &msg, sizeof(msg.mText), 0);
+
+                // wait for message to be received by the main process
+                do {
+                    msgctl(qId, IPC_STAT, &ds);
+                } while(ds.msg_qnum != 0);
 
             }
 
@@ -124,7 +128,6 @@ void main(int argc, char *argv[]) {
     int rc;
     key_t qKey;
     int qId;
-    long msgtype;
     struct msgbuf msg;
     struct result* results;
     int resultsAmt;
@@ -134,9 +137,6 @@ void main(int argc, char *argv[]) {
     // initial results memory allocation
     results = malloc(0);
 
-    // set the same message type for all messages
-    msgtype = 1;
-
     // generate systemv ipc queue
     qKey = ftok("/tmp", 'z' );
     qId = msgget(qKey, IPC_CREAT | 0666 );
@@ -144,35 +144,8 @@ void main(int argc, char *argv[]) {
     // handle given directory
     if ((pid = fork()) == 0) {
 
-        // define vars
-        int pipe_dir_fds[2];
-        struct msqid_ds ds;
-
-        // make pipe and pass to recursive function
-        pipe(pipe_dir_fds);
-
         // handle provided dir
-        handleDirectory(argv[1], pipe_dir_fds);
-
-        // close writing end of pipe
-        close(pipe_dir_fds[1]);
-
-        // set type for each following message to be the same
-        msg.mType = msgtype;
-
-        // read each result and send to message queue
-        while ( read(pipe_dir_fds[0], msg.mText, sizeof(msg.mText)) ) {
-            msg.mType = 1;
-            msgsnd(qId, &msg, sizeof(msg.mText), 0);
-
-            // wait for message to be received by the main process
-            do {
-                msgctl(qId, IPC_STAT, &ds);
-            } while(ds.msg_qnum != 0);
-        }
-
-        // close reading end of pipe
-        close(pipe_dir_fds[0]);
+        handleDirectory(argv[1], qId);
 
         // close queue
         msgctl(qId, IPC_RMID, NULL);
@@ -186,7 +159,7 @@ void main(int argc, char *argv[]) {
     resultsAmt = 0;
 
     // read until end of queue
-    while(msgrcv(qId, &msg, sizeof(msg.mText), msgtype, 0) != -1) {
+    while(msgrcv(qId, &msg, sizeof(msg.mText), MSGTYPE, 0) != -1) {
 
         results = realloc(results, sizeof(struct result) * (resultsAmt + 1) );
 
