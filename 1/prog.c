@@ -11,11 +11,12 @@
 #include <sys/sendfile.h>
 #include <sys/msg.h>
 
-#define BUFFER_SIZE 256 + 10 + 1 + 1 // 256 (max file path length) + 10 (int max size as string) + 1 (space) + 1 (null terminator)
+#define MAX_FILEPATH_LEN 256
+#define BUFFER_SIZE MAX_FILEPATH_LEN + 10 + 1 + 1 // max file path length + 10 (int max size as string) + 1 (space) + 1 (null terminator)
 #define MSGTYPE 1
 
 struct result {
-    char name[BUFFER_SIZE];
+    char name[MAX_FILEPATH_LEN];
     int words;
 };
 
