@@ -11,7 +11,7 @@
 #include <sys/sendfile.h>
 #include <sys/msg.h>
 
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 256 + 10 + 1 + 1 // 256 (max file path length) + 10 (int max size as string) + 1 (space) + 1 (null terminator)
 
 struct result {
     char name[BUFFER_SIZE];
@@ -30,11 +30,9 @@ void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
     struct dirent* entry;
     struct stat entry_stat;
     char* entry_path;
-    int entry_fd;
-    int pipe_in_fds[2];
     int pipe_out_fds[2];
     char buffer[BUFFER_SIZE];
-    ssize_t read_amt;
+    int buffer_index;
     pid_t pid;
     int rc;
     struct result r;
@@ -75,40 +73,33 @@ void handleDirectory(char* path, int pipe_parent_dir_fds[2]) {
 
             } else {
 
-                // set-up pipes
-                pipe(pipe_in_fds);
+                // set-up pipe
                 pipe(pipe_out_fds);
-
-                // write file contents to input side of pipe and close
-                entry_fd = open(entry_path, O_RDONLY);
-                sendfile(pipe_in_fds[1], entry_fd, NULL, entry_stat.st_size);
-                close(pipe_in_fds[1]);
 
                 if ((pid = fork()) == 0) {
 
                     // copy appropriate fds to stdin and stdout and close the rest
-                    dup2(pipe_in_fds[0], 0);
                     dup2(pipe_out_fds[1], 1);
-                    close(pipe_in_fds[0]);
-                    close(pipe_in_fds[1]);
                     close(pipe_out_fds[0]);
                     close(pipe_out_fds[1]);
                     close(pipe_parent_dir_fds[0]);
                     close(pipe_parent_dir_fds[1]);
 
                     // run wc
-                    execlp("wc", "wc", "-w", (char *)NULL );
+                    execlp("wc", "wc", "-w", entry_path, (char *)NULL );
                 }
 
                 // wait for child to exit
                 waitpid(pid, &rc, 0);
-                close(pipe_in_fds[0]);
                 close(pipe_out_fds[1]);
 
                 // read from pipe
-                read_amt = read(pipe_out_fds[0], buffer, BUFFER_SIZE);
+                read(pipe_out_fds[0], buffer, BUFFER_SIZE);
                 close(pipe_out_fds[0]);
-                buffer[read_amt] = '\0';
+
+                // skip to space in output and null terminate
+                for (buffer_index = 0; buffer[buffer_index] != ' '; buffer_index++);
+                buffer[buffer_index] = '\0';
 
                 // fill result struct
                 strcpy(r.name, entry_path);
@@ -155,6 +146,7 @@ void main(int argc, char *argv[]) {
 
         // define vars
         int pipe_dir_fds[2];
+        struct msqid_ds ds;
 
         // make pipe and pass to recursive function
         pipe(pipe_dir_fds);
@@ -172,6 +164,11 @@ void main(int argc, char *argv[]) {
         while ( read(pipe_dir_fds[0], msg.mText, sizeof(msg.mText)) ) {
             msg.mType = 1;
             msgsnd(qId, &msg, sizeof(msg.mText), 0);
+
+            // wait for message to be received by the main process
+            do {
+                msgctl(qId, IPC_STAT, &ds);
+            } while(ds.msg_qnum != 0);
         }
 
         // close reading end of pipe
