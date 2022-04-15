@@ -104,7 +104,7 @@ void handleDirectory(char* path, int qId) {
                 r.words = atoi(buffer);
 
                 // send result to queue
-                strcpy(msg.mText, (char *)&r);
+                memcpy(msg.mText, (char *)&r, sizeof(msg.mText));
                 msgsnd(qId, &msg, sizeof(msg.mText), 0);
 
                 // wait for message to be received by the main process
@@ -140,6 +140,8 @@ void main(int argc, char *argv[]) {
     // generate systemv ipc queue
     qKey = ftok("/tmp", 'z' );
     qId = msgget(qKey, IPC_CREAT | 0666 );
+
+    printf("processing %s, might take a while...\n\n", argv[1]);
 
     // handle given directory
     if ((pid = fork()) == 0) {
