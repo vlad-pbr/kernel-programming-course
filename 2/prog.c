@@ -14,7 +14,7 @@
 #include <netdb.h>
 
 #define BUFFER 4096
-#define PORT 8080
+#define PORT 80
 
 struct upload {
     int file_fd;
@@ -29,23 +29,19 @@ struct download {
     int file_fd;
 };
 
-void remove_upload(struct upload *uploads, int len, int index) {
-    for (int i = index; i < len; i++) {
-        uploads[i] = uploads[i+1];
-    }
-}
-
 void main(int argc, char *argv[]) {
 
     // define variables
     struct sockaddr_in address;
     struct sockaddr_in connect_addr;
     int bytes_read;
+    int bind_result;
     int addrlen = sizeof(address);
     int stop_index;
     char buf[BUFFER];
     char *token;
     char *url;
+    char *filename;
     int terminated;
     char request[BUFFER];
     char *request_hostname;
@@ -74,12 +70,15 @@ void main(int argc, char *argv[]) {
     address.sin_port = htons(PORT);
 
     // bind socket to host
-    int b = bind(fds[1].fd, (struct sockaddr*)&address, sizeof(address));
-    printf("0 is no error: %d\n", b);
+    bind_result = bind(fds[1].fd, (struct sockaddr*)&address, sizeof(address));
+    if (bind_result != 0) {
+        printf("ERROR: could not bind to port %d\n", PORT);
+        printf("NOTE: port %d is privileged, therefore the program must be ran with sudo\n", PORT);
+        exit(1);
+    }
 
     // make server listen on socket
-    int l = listen(fds[1].fd, 3);
-    printf("0 is no error: %d\n", l);
+    listen(fds[1].fd, 3);
 
     printf("NOTE: poll timeout is set to %dms so 'show' command can be seen in action\n", poll_timeout_ms);
 
@@ -126,15 +125,17 @@ void main(int argc, char *argv[]) {
                     downloads = realloc(downloads, sizeof(struct download) * ++downloads_amt);
                     downloads_poll_fds = realloc(downloads_poll_fds, sizeof(struct pollfd) * downloads_amt);
 
-                    // fetch url
+                    // parse args
                     url = strtok(NULL, " ");
+                    filename = strtok(NULL, " ");
+                    filename[strlen(filename) - 1] = '\0';
 
                     // populate new download
                     downloads[downloads_amt-1].index = downloads_amt;
                     downloads[downloads_amt-1].url = malloc(strlen(url) + 1);
                     strcpy(downloads[downloads_amt-1].url, url);
                     downloads[downloads_amt-1].socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-                    downloads[downloads_amt-1].file_fd = open(strtok(NULL, " "), O_WRONLY | O_CREAT, 0644); // TODO sanitize
+                    downloads[downloads_amt-1].file_fd = open(filename, O_WRONLY | O_CREAT, 0644); // TODO sanitize
                     downloads[downloads_amt-1].bytes_downloaded = 0;
 
                     // populate download pollfd
@@ -310,7 +311,6 @@ void main(int argc, char *argv[]) {
     free(uploads);
     free(uploads_poll_fds);
 
-    // TODO close server properly
-
+    // close server socket fd
     close(fds[1].fd);
 }
