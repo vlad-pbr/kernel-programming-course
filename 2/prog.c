@@ -50,7 +50,7 @@ void main(int argc, char *argv[]) {
     char request[BUFFER];
     char *request_hostname;
     struct pollfd fds[2];
-    int poll_timeout_ms = 500;
+    int poll_timeout_ms = 200;
     struct download *downloads = malloc(0);
     struct upload *uploads = malloc(0);
     struct pollfd *uploads_poll_fds = malloc(0);
@@ -80,6 +80,8 @@ void main(int argc, char *argv[]) {
     // make server listen on socket
     int l = listen(fds[1].fd, 3);
     printf("0 is no error: %d\n", l);
+
+    printf("NOTE: poll timeout is set to %dms so 'show' command can be seen in action\n", poll_timeout_ms);
 
     while(1) {
 
@@ -139,8 +141,6 @@ void main(int argc, char *argv[]) {
                     downloads_poll_fds[downloads_amt-1].fd = downloads[downloads_amt-1].socket_fd;
                     downloads_poll_fds[downloads_amt-1].events = POLLIN;
 
-                    printf("%d %s %d %d %d\n", downloads[downloads_amt-1].index, downloads[downloads_amt-1].url, downloads[downloads_amt-1].socket_fd, downloads[downloads_amt-1].file_fd, downloads[downloads_amt-1].bytes_downloaded);
-
                     // copy url for parsing
                     url = malloc(strlen(downloads[downloads_amt-1].url) + 1);
                     strcpy(url, downloads[downloads_amt-1].url);
@@ -199,7 +199,6 @@ void main(int argc, char *argv[]) {
             read(uploads[uploads_amt-1].socket_fd, buf, BUFFER);
             strtok(buf, " ");
             token = strtok(NULL, " ");
-            token += 1;
 
             // populate new upload with file fd
             uploads[uploads_amt-1].file_fd = open(token, O_RDONLY);
@@ -280,7 +279,7 @@ void main(int argc, char *argv[]) {
                 // write byte to file
                 else {
                     write(downloads[i].file_fd, &buf, bytes_read);
-                    downloads[i].bytes_downloaded++;
+                    downloads[i].bytes_downloaded += bytes_read;
                 }
             }
 
