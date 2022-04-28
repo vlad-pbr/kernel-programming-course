@@ -16,11 +16,6 @@
 #define BUFFER 4096
 #define PORT 80
 
-struct upload {
-    int file_fd;
-    int socket_fd;
-};
-
 struct download {
     int index;
     char* url;
@@ -32,11 +27,8 @@ struct download {
 void main(int argc, char *argv[]) {
 
     // define variables
-    struct sockaddr_in address;
     struct sockaddr_in connect_addr;
     int bytes_read;
-    int bind_result;
-    int addrlen = sizeof(address);
     int stop_index;
     char buf[BUFFER];
     char *token;
@@ -45,48 +37,20 @@ void main(int argc, char *argv[]) {
     int terminated;
     char request[BUFFER];
     char *request_hostname;
-    struct pollfd fds[2];
-    int poll_timeout_ms;
+    struct pollfd fds[1];
+    int poll_timeout_ms = 0;
     struct download *downloads = malloc(0);
-    struct upload *uploads = malloc(0);
-    struct pollfd *uploads_poll_fds = malloc(0);
     struct pollfd *downloads_poll_fds = malloc(0);
     int downloads_amt = 0;
-    int uploads_amt = 0;
 
     // set up polling for stdin
     fds[0].fd = 0;
     fds[0].events = POLLIN;
 
-    // create new TCP socket
-    fds[1].fd = socket(AF_INET, SOCK_STREAM, 0);
-
-    // set up server socket polling
-    fds[1].events = POLLIN;
-
-    // make server listen on any address on given port
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    // bind socket to host
-    bind_result = bind(fds[1].fd, (struct sockaddr*)&address, sizeof(address));
-    if (bind_result != 0) {
-        printf("ERROR: could not bind to port %d\n", PORT);
-        printf("NOTE: port %d is privileged, therefore the program must be ran with sudo\n", PORT);
-        exit(1);
-    }
-
-    // make server listen on socket
-    listen(fds[1].fd, 3);
-
-    poll_timeout_ms = 200;
-    printf("NOTE: poll timeout is set to %dms so 'show' command can be seen in action\n", poll_timeout_ms);
-
     while(1) {
 
         // poll fds
-        poll(fds, 2, poll_timeout_ms);
+        poll(fds, 1, poll_timeout_ms);
 
         // handle stdin
         if(fds[0].revents & POLLIN) {
@@ -180,77 +144,6 @@ void main(int argc, char *argv[]) {
 
         }
 
-        // handle server
-        if(fds[1].revents & POLLIN) {
-
-            // allocate space for new upload
-            uploads = realloc(uploads, sizeof(struct upload) * ++uploads_amt);
-            uploads_poll_fds = realloc(uploads_poll_fds, sizeof(struct pollfd) * uploads_amt);
-
-            // populate new upload with socket fd
-            uploads[uploads_amt-1].socket_fd = accept(fds[1].fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
-
-            // populate upload fd
-            uploads_poll_fds[uploads_amt-1].fd = uploads[uploads_amt-1].socket_fd;
-            uploads_poll_fds[uploads_amt-1].events = POLLOUT;
-
-            // get uri
-            read(uploads[uploads_amt-1].socket_fd, buf, BUFFER);
-            strtok(buf, " ");
-            token = strtok(NULL, " ");
-
-            // populate new upload with file fd
-            uploads[uploads_amt-1].file_fd = open(token, O_RDONLY);
-        }
-
-        // poll upload fds
-        poll(uploads_poll_fds, uploads_amt, poll_timeout_ms);
-
-        // handle uploads
-        for (int i = 0; i < uploads_amt; i++) {
-
-            terminated = 0;
-
-            // if client terminated download
-            if(uploads_poll_fds[i].revents & POLLHUP) {
-                terminated = 1;
-            }
-
-            // if able to write to socket
-            if(terminated == 0 && uploads_poll_fds[i].revents & POLLOUT) {
-
-                // read bytes
-                bytes_read = read(uploads[i].file_fd, &buf, BUFFER);
-
-                // if byte read - send
-                if (bytes_read) {
-                    send(uploads[i].socket_fd, &buf, bytes_read, 0);
-                }
-
-                // else eof - close fds
-                else {
-                    terminated = 1;
-                }
-            }
-
-            // remove upload
-            if (terminated) {
-
-                close(uploads[i].file_fd);
-                close(uploads[i].socket_fd);
-
-                // remove upload from uploads
-                for(int j = 0; j < uploads_amt; j++) {
-                    uploads[j] = uploads[j+1];
-                    uploads_poll_fds[j] = uploads_poll_fds[j+1];
-                }
-                uploads = realloc(uploads, sizeof(struct upload) * --uploads_amt);
-                uploads_poll_fds = realloc(uploads_poll_fds, sizeof(struct pollfd) * uploads_amt);
-                i--;
-            }
-
-        }
-
         // poll download fds
         poll(downloads_poll_fds, downloads_amt, poll_timeout_ms);
 
@@ -306,9 +199,4 @@ void main(int argc, char *argv[]) {
     // release memory
     free(downloads);
     free(downloads_poll_fds);
-    free(uploads);
-    free(uploads_poll_fds);
-
-    // close server socket fd
-    close(fds[1].fd);
 }

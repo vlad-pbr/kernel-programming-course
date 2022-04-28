@@ -1,5 +1,7 @@
 # Assigment 2
 
+EDIT: is turned out that the assignment was to only implement the client side of things, so a separate, stripped down `client.c` file is available as well
+
 Write a C program which acts as a download server. It should be able to receive keyboard input for commands and download files "simultaneously" - using sockets and polling. Program can not spawn additional processes. The following commands should be supported:
 
 - leave: closes server and quits

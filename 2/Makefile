@@ -2,6 +2,9 @@
 run:
 	gcc prog.c && sudo ./a.out
 
+run_client:
+	gcc client.c -o client.out && ./client.out
+
 command:
 	# start http://localhost/tmp/file.txt out.txt
 
