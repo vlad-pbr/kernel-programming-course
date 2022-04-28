@@ -1,16 +1,11 @@
 // prog.c
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
-#include <sys/sendfile.h>
-#include <sys/stat.h>
 #include <netdb.h>
 
 #define BUFFER 4096
