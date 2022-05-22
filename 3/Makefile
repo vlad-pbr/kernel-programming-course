@@ -8,10 +8,8 @@ clean:
 
 insert:
 	sudo insmod km.ko
-	sudo mknod /dev/km c $(shell sudo dmesg | grep "device major number" | tail -n 1 | cut -d' ' -f 9) 0
 
 remove:
-	sudo rm -f /dev/km
 	sudo rmmod km
 
 log:
