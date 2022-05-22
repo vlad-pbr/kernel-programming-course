@@ -9,6 +9,7 @@
 #include <linux/cdev.h>
 #include <linux/syscalls.h>
 #include <linux/ioctl.h>
+#include <asm/io.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Vlad Poberezhny");
@@ -16,8 +17,10 @@ MODULE_DESCRIPTION("Kernel programming course assignment 3, College of Managemen
 MODULE_VERSION("0.1");
 
 #define DEVICE_NAME "km"
+#define BUFFER_LEN 4096
 
 // ioctl commands
+#define GET_PHYS_MEM _IOWR(234, 100, char*)
 #define GET_CR3 _IOR(234, 101, unsigned long*)
 
 // device function prototypes
@@ -35,7 +38,39 @@ static struct file_operations file_opts = {
 
 static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 
+    // define variables
+    unsigned long _; // return value placeholder to ignore warnings
+
     switch (cmd) {
+
+        // handle physical memory reading
+        case GET_PHYS_MEM:
+
+            // define variables
+            char buffer[BUFFER_LEN];
+            char segment_buffer[sizeof(int32_t)];
+            int32_t segment;
+            int byte_index;
+
+            // copy segment number bytes from user space buffer
+            _ = copy_from_user(segment_buffer, (char*)arg, sizeof(segment_buffer));
+
+            // parse segment number and calculate address of segment
+            segment = (*((int32_t*)segment_buffer) - 1) * BUFFER_LEN;
+
+            // read and store each byte
+            for (byte_index = 0 ; byte_index < BUFFER_LEN; byte_index++) {
+
+                // physical memory is not understood by CPU
+                // instead it keeps a mapping of physical memory
+                // so we access the memory after translation
+                buffer[byte_index] = *(char*)phys_to_virt((phys_addr_t)segment++);
+            }
+
+            // send buffer to user space
+            _ = copy_to_user((char*)arg, buffer, BUFFER_LEN);
+
+            break;
 
         // handle CR3 register
         case GET_CR3:
@@ -49,7 +84,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             );
 
             // copy value to user space memory
-            copy_to_user((unsigned long*)arg, &cr3, sizeof(cr3));
+            _ = copy_to_user((unsigned long*)arg, &cr3, sizeof(cr3));
 
             break;
 

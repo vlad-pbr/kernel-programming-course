@@ -10,7 +10,12 @@ insert:
 	sudo insmod km.ko
 
 remove:
-	sudo rmmod km
+	-sudo rmmod km
+
+reinsert: remove clean all insert
 	
 run:
 	rm -f a.out && gcc proc.c && ./a.out $(args)
+
+log:
+	sudo dmesg
