@@ -199,6 +199,7 @@ int main(int argc, char *argv[]) {
     for (int worker_id = 0; worker_id < worker_pids_amt; worker_id++) {
         kill(worker_pids[worker_id], 15);
     }
+    free(worker_pids);
 
     printf("[main]: exiting...\n");
 
