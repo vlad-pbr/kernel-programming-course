@@ -11,7 +11,6 @@ insert:
 
 remove:
 	sudo rmmod km
-
-log:
-	sudo dmesg
 	
+run:
+	rm -f a.out && gcc proc.c && ./a.out $(args)
