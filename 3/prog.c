@@ -81,7 +81,11 @@ unsigned long v2p(unsigned long v) {
     unsigned long cr3;
     unsigned long pml4_physical_address;
     unsigned long pml4e_physical_address;
+    unsigned long pml4e_value;
     unsigned long pdpt_physical_address;
+    unsigned long pdpte_physical_address;
+    unsigned long pdpte_value;
+    unsigned long pd_physical_address;
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
@@ -108,7 +112,7 @@ unsigned long v2p(unsigned long v) {
     // 4KB-aligned PML4 table
     // this table comprises 512 64bit entries called PML4Es
     // (PML4 entries)
-    // PML4 entry is defined as follows:
+    // PML4 entry physical address is defined as follows:
     // [51:12] - pml4_physical_address
     // [11:3] - bits [47:39] of linear address
     // [2:0] - set to 0
@@ -124,35 +128,45 @@ unsigned long v2p(unsigned long v) {
     // ioctl(device_fd, GET_PHYS_MEM2, (unsigned long*)&pml4e_physical_address);
 
     // we can now read the 8 byte PML4 entry from physical memory
-    read_phys_mem(pml4e_physical_address, 8, &pdpt_physical_address);
+    read_phys_mem(pml4e_physical_address, 8, &pml4e_value);
+    printf("pml4e_value: %lu\n", pml4e_value);
+
+    // we now have the value of the relevant PML4 entry
+    // bits [51:12] specify the physical address of the relevant PDPT
+
+    // calculate the PDPT physical address
+    pdpt_physical_address = (pml4e_value >> 12) & 0xFFFFFFFFFF;
     printf("pdpt_physical_address: %lu\n", pdpt_physical_address);
 
     // we now have the physical address for the relevant PDPT
     // (page directory pointer table)
-    // 
+    // this table comprises 512 64bit entries called PDPTEs
+    // (PDPT entries)
+    // PDPT entry physical address is defined as follows:
+    // [51:12] - pdpt_physical_address
+    // [11:3] - bits [38:30] of linear address
+    // [2:0] - set to 0
 
-    return 0;
+    // calculate PDPT entry
+    pdpte_physical_address = pdpt_physical_address << 12 | ( ( (v >> 30) & 0x1FF ) << 3 );
+    printf("pdpte_physical_address: %lu\n", pdpte_physical_address);
 
-    // // cr3 value is now a physical address of the
-    // // 32-byte aligned page directory pointer table
-    // // this table comprises four 64bit entries called PDPTEs
-    // // (page directory pointer table entries)
-    // // bits [31-30] of v are the offset for that table
+    // we can now read the 8 byte PDPT entry from physical memory
+    read_phys_mem(pdpte_physical_address, 8, &pdpte_value);
+    printf("pdpte_value: %lu\n", pdpte_value);
 
-    // // calculating physical address of PDPT entry
-    // printf("pdpt_physical_address: %lu\n", cr3);
-    // pdpte_physical_address = cr3 + ((v >> 30) * 8);
-    // printf("pdpte_physical_address: %lu\n", pdpte_physical_address);
+    // we now have the value of the relevant PDPT entry
+    // usage of PDPT entry varies depending on its PS flag (bit 7)
 
-    // // we need to read the first 8 bytes (64 bits) at this physical address
-    // // so we would be able to read the value of the PDPT entry
-    // // printf("pdpe bytes: %d %d %d %d %d %d %d %d\n", pdpte_buffer[0], pdpte_buffer[1], pdpte_buffer[2], pdpte_buffer[3], pdpte_buffer[4], pdpte_buffer[5], pdpte_buffer[6], pdpte_buffer[7] );
-    // read_phys_mem(pdpte_physical_address, 8, &pdpte);
-    // // printf("pdpe bytes: %d %d %d %d %d %d %d %d\n", pdpte_buffer[0], pdpte_buffer[1], pdpte_buffer[2], pdpte_buffer[3], pdpte_buffer[4], pdpte_buffer[5], pdpte_buffer[6], pdpte_buffer[7] );
+    // check PDPT entry PS value
+    printf("pdpte_ps_flag: %lu\n", (pdpte_value >> 7) & 1);
 
-    // // the very first bit tells us whether the entry actually points to a page directory
-    // // let's check that it's lit
-    // printf("enabled: %lu\n", pdpte & 1);
+    // the flag is set to 0, indicating that we are dealing with a 4KB PD
+    // bits [51:12] specify the physical address of the relevant PD
+
+    // calculate the PD physical address
+    pd_physical_address = (pdpte_value >> 12) & 0xFFFFFFFFFF;
+    printf("pd_physical_address: %lu\n", pd_physical_address);
 
     return 0;
 }
