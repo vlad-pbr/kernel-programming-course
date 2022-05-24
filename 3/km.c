@@ -17,7 +17,7 @@ MODULE_DESCRIPTION("Kernel programming course assignment 3, College of Managemen
 MODULE_VERSION("0.1");
 
 #define DEVICE_NAME "km"
-#define VLAD_PAGE_SIZE 4096
+#define KM_PAGE_SIZE 4096
 
 // ioctl commands
 #define GET_PHYS_MEM _IOWR(234, 100, char*)
@@ -51,7 +51,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         case GET_PHYS_MEM:
 
             // define variables
-            char buffer[VLAD_PAGE_SIZE];
+            char buffer[KM_PAGE_SIZE];
             char frame_num_buffer[sizeof(u_int64_t)];
             // char segment_buffer[sizeof(int32_t)];
             u_int64_t frame_num;
@@ -65,10 +65,10 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             frame_num = *((u_int64_t*)frame_num_buffer);
 
             // calculate physical address of frame
-            frame_physical_address = frame_num * VLAD_PAGE_SIZE;
+            frame_physical_address = frame_num * KM_PAGE_SIZE;
 
             // read and store each byte
-            for (byte_index = 0 ; byte_index < VLAD_PAGE_SIZE; byte_index++) {
+            for (byte_index = 0 ; byte_index < KM_PAGE_SIZE; byte_index++) {
 
                 // physical memory is not directly understood by CPU
                 // instead it keeps a mapping of physical memory
@@ -77,7 +77,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             }
 
             // store buffer to user space
-            _ = copy_to_user((char*)arg, buffer, VLAD_PAGE_SIZE);
+            _ = copy_to_user((char*)arg, buffer, KM_PAGE_SIZE);
 
             break;
 

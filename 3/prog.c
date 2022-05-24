@@ -11,7 +11,7 @@
 #include <errno.h>
 
 #define DEVICE_NAME "km"
-#define VLAD_PAGE_SIZE 4096
+#define KM_PAGE_SIZE 4096
 
 // ioctl commands
 #define GET_PHYS_MEM _IOWR(234, 100, char*)
@@ -35,21 +35,21 @@ void read_phys_mem(unsigned long pa, unsigned long len, void *buf) {
 
     // physical address is not necessarely going to be at the start of the page
     // we need to get the number of the frame which contains it
-    first_frame_offset = pa % VLAD_PAGE_SIZE;
-    first_frame_num = (pa - first_frame_offset) / VLAD_PAGE_SIZE;
+    first_frame_offset = pa % KM_PAGE_SIZE;
+    first_frame_num = (pa - first_frame_offset) / KM_PAGE_SIZE;
 
     // requested memory will not necessarely reside on the same page
     // we need to get the number of the last frame which contains out data
-    last_frame_num = ((pa + len) - ( (pa + len) % VLAD_PAGE_SIZE )) / VLAD_PAGE_SIZE;
+    last_frame_num = ((pa + len) - ( (pa + len) % KM_PAGE_SIZE )) / KM_PAGE_SIZE;
 
     // allocate memory for buffer which will contain all of the pages
-    frame_buffer = malloc( ( 1 + (first_frame_num - last_frame_num) ) * VLAD_PAGE_SIZE );
+    frame_buffer = malloc( ( 1 + (first_frame_num - last_frame_num) ) * KM_PAGE_SIZE );
     frame_buffer_ptr = frame_buffer;
 
     printf("\n");
     
     // iterate each frame number
-    for (u_int64_t frame_num = first_frame_num; frame_num <= last_frame_num; frame_num++, frame_buffer_ptr += VLAD_PAGE_SIZE) {
+    for (u_int64_t frame_num = first_frame_num; frame_num <= last_frame_num; frame_num++, frame_buffer_ptr += KM_PAGE_SIZE) {
 
         printf("asking for frame %ld\n", frame_num);
 
@@ -74,69 +74,77 @@ void read_phys_mem(unsigned long pa, unsigned long len, void *buf) {
     free(frame_buffer);
 }
 
-unsigned long v2p_no_pae(unsigned long v) {
-
-    // define variables
-    unsigned long cr3;
-
-    // get CR3 register
-    ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
-    printf("cr3: %lu\n", cr3);
-
-    // v is a virtual (linear) address
-    // in our environment, only the last 32 bits out of 64 bits are relevant
-
-    // masking the first 32 bits
-    v = v & 0xFFFFFFFF;
-}
-
 unsigned long v2p(unsigned long v) {
 
     // define variables
     unsigned long cr3;
-    unsigned long pdpte_physical_address;
-    char pdpte_buffer[8];
-    unsigned long pdpte;
+    unsigned long pml4_physical_address;
+    unsigned long pml4e_physical_address;
+    unsigned long pdpt_physical_address;
+
+    // unsigned long pdpte_physical_address;
+    // char pdpte_buffer[8];
+    // unsigned long pdpte;
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
     printf("cr3: %lu\n", cr3);
 
     // v is a virtual (linear) address
-    // in our environment, only the last 32 bits out of 64 bits are relevant
+    // in our environment, linear address is 48 bits long
+    // therefore only the last 48 bits out of 64 bits are relevant
 
-    // masking the first 32 bits
-    v = v & 0xFFFFFFFF;
+    // masking out the first 16 bits
+    v = v & 0xFFFFFFFFFFFF;
 
-    // PAE is enabled so CR3 is comprised as follows
-    // [63-32] ignored
-    // [31-5] address of page directory table (27 bits)
-    // [4-0] ignored
+    // 4-level paging is enabled so CR3 is comprised as follows
+    // [11:0] PCID (not relevant)
+    // [51:12] physical address of the 4KB-aligned PML4 table (what we need)
+    // [64:52] reserved
+    
+    // deriving the PML4 table physical address
+    pml4_physical_address = (cr3 >> 12) & 0xFFFFFFFFFF; // bit mask with first 40 bits lit
+    printf("pml4_physical_address: %lu\n", pml4_physical_address);
 
-    // adjusting the CR3
-    cr3 = (cr3 >> 5) & 0x7FFFFFF; // bit mask with first 27 bits lit
-    printf("adjusted cr3: %lu\n", cr3);
+    // pml4_physical_address is now the physical address of the
+    // 4KB-aligned PML4 table
+    // this table comprises 512 64bit entries called PML4Es
+    // (PML4 entries)
+    // PML4 entry is defined as follows:
+    // [51:12] - pml4_physical_address
+    // [11:3] - bits [47:39] of linear address
+    // [2:0] - set to 0
 
-    // cr3 value is now a physical address of the
-    // 32-byte aligned page directory pointer table
-    // this table comprises four 64bit entries called PDPTEs
-    // (page directory pointer table entries)
-    // bits [31-30] of v are the offset for that table
+    // calculate PML4 entry
+    pml4e_physical_address = (pml4_physical_address << 12) | ( (v >> 40) << 3 );
+    printf("pml4e_physical_address: %lu\n", pml4e_physical_address);
 
-    // calculating physical address of PDPT entry
-    printf("pdpt_physical_address: %lu\n", cr3);
-    pdpte_physical_address = cr3 + ((v >> 30) * 8);
-    printf("pdpte_physical_address: %lu\n", pdpte_physical_address);
+    // we can now read the 8 byte PML4 entry from physical memory
+    read_phys_mem(pml4e_physical_address, 8, &pdpt_physical_address);
+    printf("pdpt_physical_address: %lu\n", pdpt_physical_address);
 
-    // we need to read the first 8 bytes (64 bits) at this physical address
-    // so we would be able to read the value of the PDPT entry
-    // printf("pdpe bytes: %d %d %d %d %d %d %d %d\n", pdpte_buffer[0], pdpte_buffer[1], pdpte_buffer[2], pdpte_buffer[3], pdpte_buffer[4], pdpte_buffer[5], pdpte_buffer[6], pdpte_buffer[7] );
-    read_phys_mem(pdpte_physical_address, 8, &pdpte);
-    // printf("pdpe bytes: %d %d %d %d %d %d %d %d\n", pdpte_buffer[0], pdpte_buffer[1], pdpte_buffer[2], pdpte_buffer[3], pdpte_buffer[4], pdpte_buffer[5], pdpte_buffer[6], pdpte_buffer[7] );
+    return 0;
 
-    // the very first bit tells us whether the entry actually points to a page directory
-    // let's check that it's lit
-    printf("enabled: %lu\n", pdpte & 1);
+    // // cr3 value is now a physical address of the
+    // // 32-byte aligned page directory pointer table
+    // // this table comprises four 64bit entries called PDPTEs
+    // // (page directory pointer table entries)
+    // // bits [31-30] of v are the offset for that table
+
+    // // calculating physical address of PDPT entry
+    // printf("pdpt_physical_address: %lu\n", cr3);
+    // pdpte_physical_address = cr3 + ((v >> 30) * 8);
+    // printf("pdpte_physical_address: %lu\n", pdpte_physical_address);
+
+    // // we need to read the first 8 bytes (64 bits) at this physical address
+    // // so we would be able to read the value of the PDPT entry
+    // // printf("pdpe bytes: %d %d %d %d %d %d %d %d\n", pdpte_buffer[0], pdpte_buffer[1], pdpte_buffer[2], pdpte_buffer[3], pdpte_buffer[4], pdpte_buffer[5], pdpte_buffer[6], pdpte_buffer[7] );
+    // read_phys_mem(pdpte_physical_address, 8, &pdpte);
+    // // printf("pdpe bytes: %d %d %d %d %d %d %d %d\n", pdpte_buffer[0], pdpte_buffer[1], pdpte_buffer[2], pdpte_buffer[3], pdpte_buffer[4], pdpte_buffer[5], pdpte_buffer[6], pdpte_buffer[7] );
+
+    // // the very first bit tells us whether the entry actually points to a page directory
+    // // let's check that it's lit
+    // printf("enabled: %lu\n", pdpte & 1);
 
     return 0;
 }
@@ -193,7 +201,7 @@ int main(int argc, char *argv[]) {
         ioctl(device_fd, GET_TASK_STRUCT, &address);
         printf("task_struct virtual (linear) address: %lu\n", address);
 
-        if (0) {
+        if (1) {
             // translate virtual address of task_struct to a physical one
             physical_address = v2p(address);
             printf("task_struct physical address: %lu\n", physical_address);
