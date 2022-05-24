@@ -15,7 +15,7 @@ remove:
 reinsert: remove clean all insert
 	
 run:
-	rm -f a.out && gcc proc.c && ./a.out $(args)
+	rm -f a.out && gcc prog.c && ./a.out $(args)
 
 log:
-	sudo dmesg
+	sudo dmesg | tail -n 10

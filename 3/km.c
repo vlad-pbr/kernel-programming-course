@@ -17,11 +17,15 @@ MODULE_DESCRIPTION("Kernel programming course assignment 3, College of Managemen
 MODULE_VERSION("0.1");
 
 #define DEVICE_NAME "km"
-#define BUFFER_LEN 4096
+#define VLAD_PAGE_SIZE 4096
 
 // ioctl commands
 #define GET_PHYS_MEM _IOWR(234, 100, char*)
 #define GET_CR3 _IOR(234, 101, unsigned long*)
+#define GET_TASK_STRUCT _IOR(234, 102, unsigned long*)
+
+#define GET_CR0 _IOR(234, 110, unsigned long*)
+#define GET_CR4 _IOR(234, 111, unsigned long*)
 
 // device function prototypes
 static long device_ioctl(struct file *, unsigned int, unsigned long);
@@ -47,28 +51,33 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         case GET_PHYS_MEM:
 
             // define variables
-            char buffer[BUFFER_LEN];
-            char segment_buffer[sizeof(int32_t)];
-            int32_t segment;
+            char buffer[VLAD_PAGE_SIZE];
+            char frame_num_buffer[sizeof(u_int64_t)];
+            // char segment_buffer[sizeof(int32_t)];
+            u_int64_t frame_num;
+            unsigned long frame_physical_address;
             int byte_index;
 
-            // copy segment number bytes from user space buffer
-            _ = copy_from_user(segment_buffer, (char*)arg, sizeof(segment_buffer));
+            // copy frame number bytes from user space buffer
+            _ = copy_from_user(frame_num_buffer, (char*)arg, sizeof(u_int64_t));
 
-            // parse segment number and calculate address of segment
-            segment = (*((int32_t*)segment_buffer) - 1) * BUFFER_LEN;
+            // case to frame number integer
+            frame_num = *((u_int64_t*)frame_num_buffer);
+
+            // calculate physical address of frame
+            frame_physical_address = frame_num * VLAD_PAGE_SIZE;
 
             // read and store each byte
-            for (byte_index = 0 ; byte_index < BUFFER_LEN; byte_index++) {
+            for (byte_index = 0 ; byte_index < VLAD_PAGE_SIZE; byte_index++) {
 
-                // physical memory is not understood by CPU
+                // physical memory is not directly understood by CPU
                 // instead it keeps a mapping of physical memory
                 // so we access the memory after translation
-                buffer[byte_index] = *(char*)phys_to_virt((phys_addr_t)segment++);
+                buffer[byte_index] = *(char*)phys_to_virt((phys_addr_t)frame_physical_address++);
             }
 
-            // send buffer to user space
-            _ = copy_to_user((char*)arg, buffer, BUFFER_LEN);
+            // store buffer to user space
+            _ = copy_to_user((char*)arg, buffer, VLAD_PAGE_SIZE);
 
             break;
 
@@ -88,6 +97,48 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
             break;
 
+        // handle CR0 register
+        case GET_CR0:
+
+            // store value of CR0 register
+            unsigned long cr0;
+            __asm__ __volatile__(
+                "mov %%cr0, %%rax\n\t"
+                "mov %%rax, %0\n\t"
+                : "=m" (cr0) : : "%rax"
+            );
+
+            // copy value to user space memory
+            _ = copy_to_user((unsigned long*)arg, &cr0, sizeof(cr0));
+
+            break;
+
+        // handle CR4 register
+        case GET_CR4:
+
+            // store value of CR4 register
+            unsigned long cr4;
+            __asm__ __volatile__(
+                "mov %%cr4, %%rax\n\t"
+                "mov %%rax, %0\n\t"
+                : "=m" (cr4) : : "%rax"
+            );
+
+            // copy value to user space memory
+            _ = copy_to_user((unsigned long*)arg, &cr4, sizeof(cr4));
+
+            break;
+
+        // handle task struct address
+        case GET_TASK_STRUCT:
+
+            // define variables
+            struct task_struct *task = current;
+
+            // fill user space buffer with virtual address of task struct
+            _ = copy_to_user((unsigned long*)arg, &task, sizeof(task));
+
+            break;
     }
 
     return 0;
