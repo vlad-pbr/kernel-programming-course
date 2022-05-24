@@ -91,6 +91,8 @@ unsigned long v2p(unsigned long v) {
     unsigned long pt_physical_address;
     unsigned long pte_physical_address;
     unsigned long pte_value;
+    unsigned long p_physical_address;
+    unsigned long v_physical_address;
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
@@ -218,33 +220,33 @@ unsigned long v2p(unsigned long v) {
 
     // we can now read the 8 byte PT entry from physical memory
     read_phys_mem(pte_physical_address, 8, &pte_value);
-    printf("pte_value: %lu\n", pde_value);
+    printf("pte_value: %lu\n", pte_value);
 
     // we now have the value of the relevant PT entry
     // the first bit (P) of the entry specifies whether it is in use
     
     // check PT entry P value
-    printf("pde_ps_flag: %lu\n", pde_value & 1);
+    printf("pte_ps_flag: %lu\n", pte_value & 1);
 
     // the flag is set to 1, indicating that the PT entry is indeed in use
-    
+    // bits [51:12] specify the physical address of the relevant page
 
-    return 0;
+    // calculate the page physical address
+    p_physical_address = (pte_value >> 12) & 0xFFFFFFFFFF;
+    printf("p_physical_address: %lu\n", p_physical_address);
+
+    // we now have the physical address for the relevant page
+    // we need to read a specific entry in that page at an offset
+    // the offset is specified in bits [11:0] of the linear address
+    
+    // calculate the physical address of v
+    v_physical_address = p_physical_address + ( v & 0xFFF );
+    printf("v_physical_address: %lu\n", v_physical_address);
+
+    return v_physical_address;
 }
 
 int main(int argc, char *argv[]) {
-
-    // get ts virtual address from module
-    // call v2p                                 <- this is the only problem then
-    // call read_phys_mem to read bytes of task struct
-    
-    // we can access the parent pointer from ts
-    // which is already a physical address
-    // call read_phys_mem to read bytes of parent task struct
-    
-    // and so on until we read pid 0
-    // we then iterate over its children and children of children
-    // and print data about them
 
     // define variables
     char *device_path;
@@ -284,11 +286,9 @@ int main(int argc, char *argv[]) {
         ioctl(device_fd, GET_TASK_STRUCT, &address);
         printf("task_struct virtual (linear) address: %lu\n", address);
 
-        if (1) {
-            // translate virtual address of task_struct to a physical one
-            physical_address = v2p(address);
-            printf("task_struct physical address: %lu\n", physical_address);
-        }
+        // translate virtual address of task_struct to a physical one
+        physical_address = v2p(address);
+        printf("task_struct physical address: %lu\n", physical_address);
     }
 
     // close device
