@@ -85,7 +85,9 @@ unsigned long v2p(unsigned long v) {
     unsigned long pdpt_physical_address;
     unsigned long pdpte_physical_address;
     unsigned long pdpte_value;
-    unsigned long pd_physical_address;
+    unsigned long pdt_physical_address;
+    unsigned long pde_physical_address;
+    unsigned long pde_value;
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
@@ -161,12 +163,29 @@ unsigned long v2p(unsigned long v) {
     // check PDPT entry PS value
     printf("pdpte_ps_flag: %lu\n", (pdpte_value >> 7) & 1);
 
-    // the flag is set to 0, indicating that we are dealing with a 4KB PD
-    // bits [51:12] specify the physical address of the relevant PD
+    // the flag is set to 0, indicating that we are dealing with a 4KB PDT
+    // bits [51:12] specify the physical address of the relevant PDT
 
-    // calculate the PD physical address
-    pd_physical_address = (pdpte_value >> 12) & 0xFFFFFFFFFF;
-    printf("pd_physical_address: %lu\n", pd_physical_address);
+    // calculate the PDT physical address
+    pdt_physical_address = (pdpte_value >> 12) & 0xFFFFFFFFFF;
+    printf("pdt_physical_address: %lu\n", pdt_physical_address);
+
+    // we now have the physical address for the relevant PDT
+    // (page directory table)
+    // this table comprises 512 64bit entries called PDEs
+    // (PD entries)
+    // PD entry physical address is defined as follows:
+    // [51:12] - pdt_physical_address
+    // [11:3] - bits [29:21] of linear address
+    // [2:0] - set to 0
+
+    // calculate PD entry
+    pde_physical_address = pdt_physical_address << 12 | ( ( (v >> 21) & 0x1FF ) << 3 );
+    printf("pde_physical_address: %lu\n", pde_physical_address);
+
+    // we can now read the 8 byte PD entry from physical memory
+    read_phys_mem(pde_physical_address, 8, &pde_value);
+    printf("pde_value: %lu\n", pde_value);
 
     return 0;
 }
