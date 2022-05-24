@@ -15,6 +15,7 @@
 
 // ioctl commands
 #define GET_PHYS_MEM _IOWR(234, 100, char*)
+#define GET_PHYS_MEM2 _IOWR(234, 200, unsigned long*)
 #define GET_CR3 _IOR(234, 101, unsigned long*)
 #define GET_TASK_STRUCT _IOR(234, 102, unsigned long*)
 
@@ -82,10 +83,6 @@ unsigned long v2p(unsigned long v) {
     unsigned long pml4e_physical_address;
     unsigned long pdpt_physical_address;
 
-    // unsigned long pdpte_physical_address;
-    // char pdpte_buffer[8];
-    // unsigned long pdpte;
-
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
     printf("cr3: %lu\n", cr3);
@@ -96,12 +93,13 @@ unsigned long v2p(unsigned long v) {
 
     // masking out the first 16 bits
     v = v & 0xFFFFFFFFFFFF;
+    printf("masked v: %lu\n", v);
 
     // 4-level paging is enabled so CR3 is comprised as follows
-    // [11:0] PCID (not relevant)
+    // [11:0] PCID (used for caching, not relevant)
     // [51:12] physical address of the 4KB-aligned PML4 table (what we need)
-    // [64:52] reserved
-    
+    // [64:52] reserved (not relevant)
+
     // deriving the PML4 table physical address
     pml4_physical_address = (cr3 >> 12) & 0xFFFFFFFFFF; // bit mask with first 40 bits lit
     printf("pml4_physical_address: %lu\n", pml4_physical_address);
@@ -116,12 +114,22 @@ unsigned long v2p(unsigned long v) {
     // [2:0] - set to 0
 
     // calculate PML4 entry
-    pml4e_physical_address = (pml4_physical_address << 12) | ( (v >> 40) << 3 );
+    pml4e_physical_address = (pml4_physical_address << 12) | ( (v >> 39) << 3 );
     printf("pml4e_physical_address: %lu\n", pml4e_physical_address);
+
+    // copy frame number as bytes to buffer
+    // memcpy(frame_buffer_ptr, (char*)&frame_num, sizeof(frame_num));
+
+    // request physical memory from module
+    // ioctl(device_fd, GET_PHYS_MEM2, (unsigned long*)&pml4e_physical_address);
 
     // we can now read the 8 byte PML4 entry from physical memory
     read_phys_mem(pml4e_physical_address, 8, &pdpt_physical_address);
     printf("pdpt_physical_address: %lu\n", pdpt_physical_address);
+
+    // we now have the physical address for the relevant PDPT
+    // (page directory pointer table)
+    // 
 
     return 0;
 
