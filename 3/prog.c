@@ -46,25 +46,15 @@ void read_phys_mem(unsigned long pa, unsigned long len, void *buf) {
     // allocate memory for buffer which will contain all of the pages
     frame_buffer = malloc( ( 1 + (first_frame_num - last_frame_num) ) * KM_PAGE_SIZE );
     frame_buffer_ptr = frame_buffer;
-
-    printf("\n");
     
     // iterate each frame number
     for (u_int64_t frame_num = first_frame_num; frame_num <= last_frame_num; frame_num++, frame_buffer_ptr += KM_PAGE_SIZE) {
 
-        printf("asking for frame %ld\n", frame_num);
-
-        printf("bytes: %d %d %d %d %d %d %d %d\n", frame_buffer_ptr[0], frame_buffer_ptr[1], frame_buffer_ptr[2], frame_buffer_ptr[3], frame_buffer_ptr[4], frame_buffer_ptr[5], frame_buffer_ptr[6], frame_buffer_ptr[7] );
-
         // copy frame number as bytes to buffer
         memcpy(frame_buffer_ptr, (char*)&frame_num, sizeof(frame_num));
 
-        printf("bytes: %d %d %d %d %d %d %d %d\n", frame_buffer_ptr[0], frame_buffer_ptr[1], frame_buffer_ptr[2], frame_buffer_ptr[3], frame_buffer_ptr[4], frame_buffer_ptr[5], frame_buffer_ptr[6], frame_buffer_ptr[7] );
-
         // request physical memory from module
         ioctl(device_fd, GET_PHYS_MEM, (unsigned long*)frame_buffer_ptr);
-
-        printf("bytes: %d %d %d %d %d %d %d %d\n", frame_buffer_ptr[0], frame_buffer_ptr[1], frame_buffer_ptr[2], frame_buffer_ptr[3], frame_buffer_ptr[4], frame_buffer_ptr[5], frame_buffer_ptr[6], frame_buffer_ptr[7] );
     }
 
     // fill buffer with relevant data
