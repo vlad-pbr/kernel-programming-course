@@ -88,6 +88,9 @@ unsigned long v2p(unsigned long v) {
     unsigned long pdt_physical_address;
     unsigned long pde_physical_address;
     unsigned long pde_value;
+    unsigned long pt_physical_address;
+    unsigned long pte_physical_address;
+    unsigned long pte_value;
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
@@ -186,6 +189,45 @@ unsigned long v2p(unsigned long v) {
     // we can now read the 8 byte PD entry from physical memory
     read_phys_mem(pde_physical_address, 8, &pde_value);
     printf("pde_value: %lu\n", pde_value);
+
+    // we now have the value of the relevant PD entry
+    // usage of PD entry varies depending on its PS flag (bit 7)
+
+    // check PDPT entry PS value
+    printf("pde_ps_flag: %lu\n", (pde_value >> 7) & 1);
+
+    // the flag is set to 0, indicating that we are dealing with a 4KB PT
+    // bits [51:12] specify the physical address of the relevant PT
+
+    // calculate the PT physical address
+    pt_physical_address = (pde_value >> 12) & 0xFFFFFFFFFF;
+    printf("pt_physical_address: %lu\n", pt_physical_address);
+
+    // we now have the physical address for the relevant PT
+    // (page table)
+    // this table comprises 512 64bit entries called PTEs
+    // (PT entries)
+    // PT entry physical address is defined as follows:
+    // [51:12] - pt_physical_address
+    // [11:3] - bits [20:12] of linear address
+    // [2:0] - set to 0
+
+    // calculate PT entry
+    pte_physical_address = pt_physical_address << 12 | ( ( (v >> 12) & 0x1FF ) << 3 );
+    printf("pte_physical_address: %lu\n", pte_physical_address);
+
+    // we can now read the 8 byte PT entry from physical memory
+    read_phys_mem(pte_physical_address, 8, &pte_value);
+    printf("pte_value: %lu\n", pde_value);
+
+    // we now have the value of the relevant PT entry
+    // the first bit (P) of the entry specifies whether it is in use
+    
+    // check PT entry P value
+    printf("pde_ps_flag: %lu\n", pde_value & 1);
+
+    // the flag is set to 1, indicating that the PT entry is indeed in use
+    
 
     return 0;
 }
