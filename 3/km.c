@@ -21,7 +21,6 @@ MODULE_VERSION("0.1");
 
 // ioctl commands
 #define GET_PHYS_MEM _IOWR(234, 100, char*)
-#define GET_PHYS_MEM2 _IOWR(234, 200, unsigned long*)
 #define GET_CR3 _IOR(234, 101, unsigned long*)
 #define GET_TASK_STRUCT _IOR(234, 102, unsigned long*)
 
@@ -54,7 +53,6 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             // define variables
             char buffer[KM_PAGE_SIZE];
             char frame_num_buffer[sizeof(u_int64_t)];
-            // char segment_buffer[sizeof(int32_t)];
             u_int64_t frame_num;
             unsigned long frame_physical_address;
             int byte_index;
@@ -79,39 +77,6 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
             // store buffer to user space
             _ = copy_to_user((char*)arg, buffer, KM_PAGE_SIZE);
-
-            break;
-
-        // handle physical memory reading
-        case GET_PHYS_MEM2:
-
-            // define variables
-            unsigned long addr;
-            addr = 3;
-
-            printk(KERN_NOTICE "addr: %lu\n", addr);
-
-            // copy frame number bytes from user space buffer
-            _ = copy_from_user(&addr, (unsigned long*)arg, sizeof(unsigned long));
-
-            printk(KERN_NOTICE "phys_addr: %lu\n", addr);
-
-            phys_addr_t byte = addr;
-
-            printk(KERN_NOTICE "phys_addr_t: %lu\n", byte);
-
-            char* after = phys_to_virt(byte);
-
-            printk(KERN_NOTICE "after: %lu\n", after);
-
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
-            printk(KERN_NOTICE "value: %lu\n", *(after++));
 
             break;
 
@@ -167,7 +132,26 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         case GET_TASK_STRUCT:
 
             // define variables
-            struct task_struct *task = current;
+            struct task_struct *task;
+            phys_addr_t phys;
+            char *comm_p;
+            phys_addr_t comm_p_pa;
+            unsigned long comm_p_pa_p;
+
+            task = current;
+            printk(KERN_NOTICE "before pa: %lu\n", task);
+            phys = virt_to_phys(task);
+            printk(KERN_NOTICE "pa: %llu\n", phys);
+
+            // printk(KERN_NOTICE "offsetof comm: %d\n", offsetof(struct task_struct, comm));
+            // printk(KERN_NOTICE "comm: %s\n", task->comm);
+            // comm_p = (char*)task + offsetof(struct task_struct, comm);
+            // printk(KERN_NOTICE "comm_p: %s\n", comm_p);
+            // printk(KERN_NOTICE "comm_p va: %p\n", comm_p);
+            // comm_p_pa = virt_to_phys(comm_p);
+            // printk(KERN_NOTICE "comm_p pa: %p %llu\n", comm_p_pa, comm_p_pa);
+            // comm_p_pa_p = comm_p_pa;
+            // printk(KERN_NOTICE "comm_p pa p: %lu\n", comm_p_pa_p);
 
             // fill user space buffer with virtual address of task struct
             _ = copy_to_user((unsigned long*)arg, &task, sizeof(task));

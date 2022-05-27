@@ -15,7 +15,6 @@
 
 // ioctl commands
 #define GET_PHYS_MEM _IOWR(234, 100, char*)
-#define GET_PHYS_MEM2 _IOWR(234, 200, unsigned long*)
 #define GET_CR3 _IOR(234, 101, unsigned long*)
 #define GET_TASK_STRUCT _IOR(234, 102, unsigned long*)
 
@@ -82,7 +81,8 @@ unsigned long v2p(unsigned long v) {
     unsigned long pte_physical_address;
     unsigned long pte_value;
     unsigned long p_physical_address;
-    unsigned long v_physical_address;
+    unsigned long pe_physical_address;
+    unsigned long pe_value;
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
@@ -117,12 +117,6 @@ unsigned long v2p(unsigned long v) {
     // calculate PML4 entry
     pml4e_physical_address = (pml4_physical_address << 12) | ( (v >> 39) << 3 );
     printf("pml4e_physical_address: %lu\n", pml4e_physical_address);
-
-    // copy frame number as bytes to buffer
-    // memcpy(frame_buffer_ptr, (char*)&frame_num, sizeof(frame_num));
-
-    // request physical memory from module
-    // ioctl(device_fd, GET_PHYS_MEM2, (unsigned long*)&pml4e_physical_address);
 
     // we can now read the 8 byte PML4 entry from physical memory
     read_phys_mem(pml4e_physical_address, 8, &pml4e_value);
@@ -185,7 +179,7 @@ unsigned long v2p(unsigned long v) {
     // we now have the value of the relevant PD entry
     // usage of PD entry varies depending on its PS flag (bit 7)
 
-    // check PDPT entry PS value
+    // check PD entry PS value
     printf("pde_ps_flag: %lu\n", (pde_value >> 7) & 1);
 
     // the flag is set to 0, indicating that we are dealing with a 4KB PT
@@ -228,12 +222,12 @@ unsigned long v2p(unsigned long v) {
     // we now have the physical address for the relevant page
     // we need to read a specific entry in that page at an offset
     // the offset is specified in bits [11:0] of the linear address
-    
-    // calculate the physical address of v
-    v_physical_address = p_physical_address + ( v & 0xFFF );
-    printf("v_physical_address: %lu\n", v_physical_address);
 
-    return v_physical_address;
+    // calculate the physical address of v
+    pe_physical_address = p_physical_address << 12 | ( v & 0xFFF );
+    printf("pe_physical_address: %lu\n", pe_physical_address);
+
+    return pe_physical_address;
 }
 
 int main(int argc, char *argv[]) {
