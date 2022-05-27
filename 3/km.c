@@ -43,7 +43,7 @@ static struct file_operations file_opts = {
 static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 
     // define variables
-    unsigned long _; // return value placeholder to ignore warnings
+    unsigned long _; // return value placeholder
 
     switch (cmd) {
 
@@ -133,25 +133,9 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
             // define variables
             struct task_struct *task;
-            phys_addr_t phys;
-            char *comm_p;
-            phys_addr_t comm_p_pa;
-            unsigned long comm_p_pa_p;
 
+            // set task value
             task = current;
-            printk(KERN_NOTICE "before pa: %lu\n", task);
-            phys = virt_to_phys(task);
-            printk(KERN_NOTICE "pa: %llu\n", phys);
-
-            printk(KERN_NOTICE "offsetof comm: %d\n", offsetof(struct task_struct, comm));
-            // printk(KERN_NOTICE "comm: %s\n", task->comm);
-            // comm_p = (char*)task + offsetof(struct task_struct, comm);
-            // printk(KERN_NOTICE "comm_p: %s\n", comm_p);
-            // printk(KERN_NOTICE "comm_p va: %p\n", comm_p);
-            // comm_p_pa = virt_to_phys(comm_p);
-            // printk(KERN_NOTICE "comm_p pa: %p %llu\n", comm_p_pa, comm_p_pa);
-            // comm_p_pa_p = comm_p_pa;
-            // printk(KERN_NOTICE "comm_p pa p: %lu\n", comm_p_pa_p);
 
             // fill user space buffer with virtual address of task struct
             _ = copy_to_user((unsigned long*)arg, &task, sizeof(task));

@@ -21,9 +21,14 @@
 #define GET_CR0 _IOR(234, 110, unsigned long*)
 #define GET_CR4 _IOR(234, 111, unsigned long*)
 
-// task_struct offsets
+// task_struct related
 #define OFFSET_COMM 2856
+#define OFFSET_PID 2384
+#define OFFSET_TASKS 2120
+#define OFFSET_PREV OFFSET_TASKS + TASK_LEN
 #define COMM_LEN 16
+#define PID_LEN sizeof(pid_t)
+#define TASK_LEN 8
 
 // global variables
 static int device_fd;
@@ -90,7 +95,6 @@ unsigned long v2p(unsigned long v) {
 
     // get CR3 register
     ioctl(device_fd, GET_CR3, (unsigned long*)&cr3);
-    printf("cr3: %lu\n", cr3);
 
     // v is a virtual (linear) address
     // in our environment, linear address is 48 bits long
@@ -98,7 +102,6 @@ unsigned long v2p(unsigned long v) {
 
     // masking out the first 16 bits
     v = v & 0xFFFFFFFFFFFF;
-    printf("masked v: %lu\n", v);
 
     // 4-level paging is enabled so CR3 is comprised as follows
     // [11:0] PCID (used for caching, not relevant)
@@ -107,7 +110,6 @@ unsigned long v2p(unsigned long v) {
 
     // deriving the PML4 table physical address
     pml4_physical_address = (cr3 >> 12) & 0xFFFFFFFFFF; // bit mask with first 40 bits lit
-    printf("pml4_physical_address: %lu\n", pml4_physical_address);
 
     // pml4_physical_address is now the physical address of the
     // 4KB-aligned PML4 table
@@ -120,18 +122,15 @@ unsigned long v2p(unsigned long v) {
 
     // calculate PML4 entry
     pml4e_physical_address = (pml4_physical_address << 12) | ( (v >> 39) << 3 );
-    printf("pml4e_physical_address: %lu\n", pml4e_physical_address);
 
     // we can now read the 8 byte PML4 entry from physical memory
     read_phys_mem(pml4e_physical_address, 8, &pml4e_value);
-    printf("pml4e_value: %lu\n", pml4e_value);
 
     // we now have the value of the relevant PML4 entry
     // bits [51:12] specify the physical address of the relevant PDPT
 
     // calculate the PDPT physical address
     pdpt_physical_address = (pml4e_value >> 12) & 0xFFFFFFFFFF;
-    printf("pdpt_physical_address: %lu\n", pdpt_physical_address);
 
     // we now have the physical address for the relevant PDPT
     // (page directory pointer table)
@@ -144,24 +143,18 @@ unsigned long v2p(unsigned long v) {
 
     // calculate PDPT entry
     pdpte_physical_address = pdpt_physical_address << 12 | ( ( (v >> 30) & 0x1FF ) << 3 );
-    printf("pdpte_physical_address: %lu\n", pdpte_physical_address);
 
     // we can now read the 8 byte PDPT entry from physical memory
     read_phys_mem(pdpte_physical_address, 8, &pdpte_value);
-    printf("pdpte_value: %lu\n", pdpte_value);
 
     // we now have the value of the relevant PDPT entry
     // usage of PDPT entry varies depending on its PS flag (bit 7)
-
-    // check PDPT entry PS value
-    printf("pdpte_ps_flag: %lu\n", (pdpte_value >> 7) & 1);
-
+    // based on our environment, we can safely assume that
     // the flag is set to 0, indicating that we are dealing with a 4KB PDT
     // bits [51:12] specify the physical address of the relevant PDT
 
     // calculate the PDT physical address
     pdt_physical_address = (pdpte_value >> 12) & 0xFFFFFFFFFF;
-    printf("pdt_physical_address: %lu\n", pdt_physical_address);
 
     // we now have the physical address for the relevant PDT
     // (page directory table)
@@ -174,24 +167,18 @@ unsigned long v2p(unsigned long v) {
 
     // calculate PD entry
     pde_physical_address = pdt_physical_address << 12 | ( ( (v >> 21) & 0x1FF ) << 3 );
-    printf("pde_physical_address: %lu\n", pde_physical_address);
 
     // we can now read the 8 byte PD entry from physical memory
     read_phys_mem(pde_physical_address, 8, &pde_value);
-    printf("pde_value: %lu\n", pde_value);
 
     // we now have the value of the relevant PD entry
     // usage of PD entry varies depending on its PS flag (bit 7)
-
-    // check PD entry PS value
-    printf("pde_ps_flag: %lu\n", (pde_value >> 7) & 1);
-
+    // based on our environment, we can safely assume that
     // the flag is set to 0, indicating that we are dealing with a 4KB PT
     // bits [51:12] specify the physical address of the relevant PT
 
     // calculate the PT physical address
     pt_physical_address = (pde_value >> 12) & 0xFFFFFFFFFF;
-    printf("pt_physical_address: %lu\n", pt_physical_address);
 
     // we now have the physical address for the relevant PT
     // (page table)
@@ -204,24 +191,18 @@ unsigned long v2p(unsigned long v) {
 
     // calculate PT entry
     pte_physical_address = pt_physical_address << 12 | ( ( (v >> 12) & 0x1FF ) << 3 );
-    printf("pte_physical_address: %lu\n", pte_physical_address);
 
     // we can now read the 8 byte PT entry from physical memory
     read_phys_mem(pte_physical_address, 8, &pte_value);
-    printf("pte_value: %lu\n", pte_value);
 
     // we now have the value of the relevant PT entry
     // the first bit (P) of the entry specifies whether it is in use
-    
-    // check PT entry P value
-    printf("pte_ps_flag: %lu\n", pte_value & 1);
-
+    // based on our environment, we can safely assume that
     // the flag is set to 1, indicating that the PT entry is indeed in use
     // bits [51:12] specify the physical address of the relevant page
 
     // calculate the page physical address
     p_physical_address = (pte_value >> 12) & 0xFFFFFFFFFF;
-    printf("p_physical_address: %lu\n", p_physical_address);
 
     // we now have the physical address for the relevant page
     // we need to read a specific entry in that page at an offset
@@ -229,19 +210,22 @@ unsigned long v2p(unsigned long v) {
 
     // calculate the physical address of v
     pe_physical_address = p_physical_address << 12 | ( v & 0xFFF );
-    printf("pe_physical_address: %lu\n", pe_physical_address);
 
     return pe_physical_address;
 }
 
-int main(int argc, char *argv[]) {
+int main() {
 
     // define variables
     char *device_path;
-    unsigned long address;
+    unsigned long virtual_address;
     unsigned long physical_address;
     unsigned long cr0;
     unsigned long cr4;
+    char task_comm[COMM_LEN];
+    pid_t task_pid;
+    unsigned long task_tasks;
+    int reached_pid_0;
 
     // make device path
     device_path = malloc(6 + strlen(DEVICE_NAME));
@@ -250,40 +234,50 @@ int main(int argc, char *argv[]) {
     // open device
     device_fd = open(device_path, O_RDWR);
 
-    // the entire process
-    if (strcmp(argv[1], "103") == 0) {
+    // get values of cr0 and cr4 registers
+    ioctl(device_fd, GET_CR0, (unsigned long*)&cr0);
+    ioctl(device_fd, GET_CR4, (unsigned long*)&cr4);
 
-        // get values of cr0 and cr4 registers
-        ioctl(device_fd, GET_CR0, (unsigned long*)&cr0);
-        ioctl(device_fd, GET_CR4, (unsigned long*)&cr4);
+    // this program assumes it is being ran in a kernel which uses:
+    // - protected mode (cr0.pe = 1)
+    // - physical address extension (cr4.pae = 1)
+    // - 4 level paging (cr4.la57 = 0)
+    // - process-context identifiers (cr4.pcide = 1)
+    // in other words - 4-level paging
 
-        // this program assumes it is being ran in a kernel which uses:
-        // - protected mode (cr0.pe = 1)
-        // - physical address extension (cr4.pae = 1)
-        // - 4 level paging (cr4.la57 = 0)
-        // - process-context identifiers (cr4.pcide = 1)
-        // in other words - 4-level paging
+    // print relevant values of register bits
+    printf("cr0.pe: %lu\n", cr0 & 1);
+    printf("cr4.pae: %lu\n", (cr4 >> 5) & 1);
+    printf("cr4.la57: %lu\n", (cr4 >> 12) & 1);
+    printf("cr4.pcide: %lu\n\n", (cr4 >> 17) & 1);
 
-        // print relevant values of register bits
-        printf("cr0.pe: %lu\n", cr0 & 1);
-        printf("cr4.pae: %lu\n", (cr4 >> 5) & 1);
-        printf("cr4.la57: %lu\n", (cr4 >> 12) & 1);
-        printf("cr4.pcide: %lu\n", (cr4 >> 17) & 1);
+    // get task_struct virtual address
+    ioctl(device_fd, GET_TASK_STRUCT, &virtual_address);
 
-        // get task_struct virtual address
-        ioctl(device_fd, GET_TASK_STRUCT, &address);
-        printf("task_struct virtual (linear) address: %lu\n", address);
+    // translate virtual address of task_struct to a physical one
+    physical_address = v2p(virtual_address);
 
-        // 2856
+    // loop over all previous tasks until reached pid 0
+    reached_pid_0 = 0;
+    while (!reached_pid_0) {
 
-        // translate virtual address of task_struct to a physical one
-        physical_address = v2p(address);
-        printf("task_struct physical address: %lu\n", physical_address);
+        // read pid and comm fields of current task_struct
+        read_phys_mem(physical_address + OFFSET_PID, PID_LEN, &task_pid);
+        read_phys_mem(physical_address + OFFSET_COMM, COMM_LEN, &task_comm);
+        printf("%d %s\n", task_pid, task_comm);
+        
+        // if task pid is not 0
+        if (task_pid) {
 
-        // just to flex
-        char comm[COMM_LEN];
-        read_phys_mem(physical_address + OFFSET_COMM, COMM_LEN, comm);
-        printf("%s\n", comm);
+            // read previous task_struct
+            read_phys_mem(physical_address + OFFSET_PREV, 8, &task_tasks);
+            task_tasks = v2p(task_tasks);
+            physical_address = task_tasks - OFFSET_TASKS;
+
+        } else {
+            reached_pid_0 = 1;
+        }
+
     }
 
     // close device
