@@ -267,5 +267,5 @@ int main() {
 
     // close device
     close(device_fd);
-
+    free(device_path);
 }
