@@ -143,7 +143,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             phys = virt_to_phys(task);
             printk(KERN_NOTICE "pa: %llu\n", phys);
 
-            // printk(KERN_NOTICE "offsetof comm: %d\n", offsetof(struct task_struct, comm));
+            printk(KERN_NOTICE "offsetof comm: %d\n", offsetof(struct task_struct, comm));
             // printk(KERN_NOTICE "comm: %s\n", task->comm);
             // comm_p = (char*)task + offsetof(struct task_struct, comm);
             // printk(KERN_NOTICE "comm_p: %s\n", comm_p);

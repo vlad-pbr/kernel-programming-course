@@ -21,6 +21,10 @@
 #define GET_CR0 _IOR(234, 110, unsigned long*)
 #define GET_CR4 _IOR(234, 111, unsigned long*)
 
+// task_struct offsets
+#define OFFSET_COMM 2856
+#define COMM_LEN 16
+
 // global variables
 static int device_fd;
 
@@ -270,9 +274,16 @@ int main(int argc, char *argv[]) {
         ioctl(device_fd, GET_TASK_STRUCT, &address);
         printf("task_struct virtual (linear) address: %lu\n", address);
 
+        // 2856
+
         // translate virtual address of task_struct to a physical one
         physical_address = v2p(address);
         printf("task_struct physical address: %lu\n", physical_address);
+
+        // just to flex
+        char comm[COMM_LEN];
+        read_phys_mem(physical_address + OFFSET_COMM, COMM_LEN, comm);
+        printf("%s\n", comm);
     }
 
     // close device
