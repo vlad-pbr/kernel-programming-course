@@ -78,7 +78,7 @@ int worker(int id, char* ip, int port, int num_connections, int interval) {
     // prepare connection
     connect_addr.sin_family = AF_INET;
     connect_addr.sin_port = htons(port);
-    inet_aton(ip, &connect_addr.sin_addr.s_addr);
+    inet_aton(ip, (struct in_addr *)(&connect_addr.sin_addr.s_addr));
 
     while (1) {
 
