@@ -24,9 +24,6 @@ MODULE_VERSION("0.1");
 #define GET_CR3 _IOR(234, 101, unsigned long*)
 #define GET_TASK_STRUCT _IOR(234, 102, unsigned long*)
 
-#define GET_CR0 _IOR(234, 110, unsigned long*)
-#define GET_CR4 _IOR(234, 111, unsigned long*)
-
 // device function prototypes
 static long device_ioctl(struct file *, unsigned int, unsigned long);
 
@@ -93,38 +90,6 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
             // copy value to user space memory
             _ = copy_to_user((unsigned long*)arg, &cr3, sizeof(cr3));
-
-            break;
-
-        // handle CR0 register
-        case GET_CR0:
-
-            // store value of CR0 register
-            unsigned long cr0;
-            __asm__ __volatile__(
-                "mov %%cr0, %%rax\n\t"
-                "mov %%rax, %0\n\t"
-                : "=m" (cr0) : : "%rax"
-            );
-
-            // copy value to user space memory
-            _ = copy_to_user((unsigned long*)arg, &cr0, sizeof(cr0));
-
-            break;
-
-        // handle CR4 register
-        case GET_CR4:
-
-            // store value of CR4 register
-            unsigned long cr4;
-            __asm__ __volatile__(
-                "mov %%cr4, %%rax\n\t"
-                "mov %%rax, %0\n\t"
-                : "=m" (cr4) : : "%rax"
-            );
-
-            // copy value to user space memory
-            _ = copy_to_user((unsigned long*)arg, &cr4, sizeof(cr4));
 
             break;
 

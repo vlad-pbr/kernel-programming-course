@@ -18,9 +18,6 @@
 #define GET_CR3 _IOR(234, 101, unsigned long*)
 #define GET_TASK_STRUCT _IOR(234, 102, unsigned long*)
 
-#define GET_CR0 _IOR(234, 110, unsigned long*)
-#define GET_CR4 _IOR(234, 111, unsigned long*)
-
 // task_struct related
 #define OFFSET_COMM 2856
 #define OFFSET_PID 2384
@@ -220,8 +217,6 @@ int main() {
     char *device_path;
     unsigned long virtual_address;
     unsigned long physical_address;
-    unsigned long cr0;
-    unsigned long cr4;
     char task_comm[COMM_LEN];
     pid_t task_pid;
     unsigned long task_tasks;
@@ -234,22 +229,12 @@ int main() {
     // open device
     device_fd = open(device_path, O_RDWR);
 
-    // get values of cr0 and cr4 registers
-    ioctl(device_fd, GET_CR0, (unsigned long*)&cr0);
-    ioctl(device_fd, GET_CR4, (unsigned long*)&cr4);
-
     // this program assumes it is being ran in a kernel which uses:
     // - protected mode (cr0.pe = 1)
     // - physical address extension (cr4.pae = 1)
     // - 4 level paging (cr4.la57 = 0)
     // - process-context identifiers (cr4.pcide = 1)
     // in other words - 4-level paging
-
-    // print relevant values of register bits
-    printf("cr0.pe: %lu\n", cr0 & 1);
-    printf("cr4.pae: %lu\n", (cr4 >> 5) & 1);
-    printf("cr4.la57: %lu\n", (cr4 >> 12) & 1);
-    printf("cr4.pcide: %lu\n\n", (cr4 >> 17) & 1);
 
     // get task_struct virtual address
     ioctl(device_fd, GET_TASK_STRUCT, &virtual_address);
