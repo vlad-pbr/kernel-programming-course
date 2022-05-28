@@ -23,4 +23,4 @@ Makefile command `run` runs the program with default command line arguments `127
 Makefile command `watch` displays current TCP connections. This is useful assuming you run the attack on a local HTTP server. Apache2 with default configuration is especially weak to this attack.
 Makefile command `request` performs a single request to the local HTTP server and then displays the time it took to receive the response.
 
-Using default Apache2 configuration and default command line arguments, `make request` command reports an average of 110 seconds per request.
+Using default Apache2 configuration and default command line arguments, on a machine with 4 vCPUs and 8GB of RAM, `make request` command reports an average of 53 seconds per request.
